@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #0b0c0a;
+  --ink-2: #141611;
+  --paper: #f3eee3;
+  --paper-2: #e7dfcf;
+  --brass: #c6a15b;
+  --brass-2: #e4c888;
+  --open: #2ee59d;
+  --blocked: #ff4d3a;
+  --muted: #8c887a;
+  --line: rgba(198, 161, 91, 0.28);
+}
+
+html,
+body {
+  background: var(--ink);
+  color: var(--paper);
+  min-height: 100%;
+}
+
+body {
+  background-image:
+    radial-gradient(1200px 600px at 10% -10%, rgba(198, 161, 91, 0.08), transparent 50%),
+    radial-gradient(900px 500px at 110% 10%, rgba(46, 229, 157, 0.05), transparent 45%),
+    linear-gradient(180deg, #0b0c0a 0%, #10120e 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: var(--brass);
+  color: var(--ink);
+}
+
+.paper {
+  background: var(--paper);
+  color: #1b1a16;
+}
+
+.seal {
+  width: 168px;
+  height: 168px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  border: 8px double currentColor;
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+.grid-fine {
+  background-image:
+    linear-gradient(rgba(198, 161, 91, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(198, 161, 91, 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(198, 161, 91, 0.35);
+  border-radius: 99px;
+}
