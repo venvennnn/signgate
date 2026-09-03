@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+data
+*.db
+.env
+.env.local
+.DS_Store
+coverage
+__pycache__
+.pytest_cache
+.venv
+venv
+*.pyc
+.streamlit/secrets.toml
