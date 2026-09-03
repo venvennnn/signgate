@@ -126,21 +126,20 @@ def render_home() -> None:
 
     if "prompt_box" not in st.session_state:
         st.session_state.prompt_box = DEFAULT_PROMPT
+    c1, c2, _c3 = st.columns([1, 1, 2])
+    load_demo = c1.button("Load 3-minute demo", type="secondary")
+    lock_manifest = c2.button("Lock Intent Manifest", key="extract_intent")
+    if load_demo:
+        st.session_state.prompt_box = DEFAULT_PROMPT
     prompt = st.text_area("Capture intent", height=120, key="prompt_box")
-    c1, c2, c3 = st.columns([1, 1, 2])
-    with c1:
-        if st.button("Load 3-minute demo", type="secondary"):
-            st.session_state.prompt_box = DEFAULT_PROMPT
+    if lock_manifest:
+        try:
+            session = create_document(prompt or DEFAULT_PROMPT)
+            st.session_state.document_id = session["document"]["id"]
+            _clear_err()
             st.rerun()
-    with c2:
-        if st.button("Lock Intent Manifest", key="extract_intent"):
-            try:
-                session = create_document(prompt or DEFAULT_PROMPT)
-                st.session_state.document_id = session["document"]["id"]
-                _clear_err()
-                st.rerun()
-            except Exception as exc:
-                _err(exc)
+        except Exception as exc:
+            _err(exc)
 
     st.caption("0:00–0:30 · The structured JSON locks. Chat never becomes a signature.")
 
