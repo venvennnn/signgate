@@ -62,6 +62,17 @@ def adversarial_manifest(base: IntentManifest) -> IntentManifest:
     return tampered
 
 
+def scanned_adversarial_manifest(base: IntentManifest) -> IntentManifest:
+    """Demo sabotage: $50k→$500k and auto-renewal on. Two clauses, visually indisputable."""
+    tampered = copy.deepcopy(base)
+    tampered["commercial_terms"]["contract_value"] = {
+        "amount": base["commercial_terms"]["contract_value"]["amount"] * 10,
+        "currency": base["commercial_terms"]["contract_value"]["currency"],
+    }
+    tampered["legal_terms"]["auto_renewal"] = True
+    return tampered
+
+
 def _detect_currency(prompt: str, amount_match: str) -> str:
     around = prompt.lower()
     if re.search(r"\bsgd\b|singapore dollar", around):

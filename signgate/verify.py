@@ -310,8 +310,35 @@ def decide_gate(
     extracted: ExtractedTerms,
     extra: list[Discrepancy] | None = None,
     llm_used: bool = False,
+    two_pass: dict[str, Any] | None = None,
+    cover_sheet_attached: bool = False,
+    extraction_provider: str = "local",
 ) -> GateDecision:
-    discrepancies = compare_manifest_to_extracted(manifest, extracted) + (extra or [])
+    from .twopass import mismatches_to_findings, run_two_pass
+
+    pass_result = two_pass or run_two_pass(manifest, extracted, llm_used=False)
+    extra_findings = list(extra or [])
+    if pass_result.get("llm_used") and pass_result.get("llm_mismatches"):
+        extra_findings.extend(mismatches_to_findings(pass_result["llm_mismatches"], layer="semantic"))
+    if pass_result.get("llm_parser_conflicts"):
+        extra_findings.append(
+            _finding(
+                severity="material",
+                layer="semantic",
+                field="two_pass_conflict",
+                title="LLM JSON disagreed with parser JSON",
+                approved_value="Deterministic parser is authoritative",
+                found_value=f"{len(pass_result['llm_parser_conflicts'])} field conflict(s)",
+                page=None,
+                excerpt=None,
+                rationale=(
+                    "The language model extracted JSON that does not match Foxit/parser JSON. "
+                    "Python keeps the parser values. The model cannot open the gate."
+                ),
+                confidence=1.0,
+            )
+        )
+    discrepancies = compare_manifest_to_extracted(manifest, extracted) + extra_findings
     blocking = any(item["severity"] in {"material", "critical", "uncertain"} for item in discrepancies)
     exact_ok = not any(item["layer"] == "exact" for item in discrepancies)
     values = [
@@ -348,6 +375,9 @@ def decide_gate(
             if not any(found.lower() == required.lower() for found in extracted["attachments_found"])
         ],
         "discrepancies": discrepancies,
-        "llm_used": llm_used,
+        "llm_used": llm_used or bool(pass_result.get("llm_used")),
         "llm_may_not_open_gate": True,
+        "two_pass": pass_result,  # type: ignore[typeddict-item]
+        "cover_sheet_attached": cover_sheet_attached,
+        "extraction_provider": extraction_provider,
     }

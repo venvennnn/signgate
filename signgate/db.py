@@ -121,6 +121,17 @@ def connect() -> sqlite3.Connection:
           reason TEXT,
           metadata TEXT
         );
+        CREATE TABLE IF NOT EXISTS pipeline_steps (
+          id TEXT PRIMARY KEY,
+          document_id TEXT NOT NULL,
+          seq INTEGER NOT NULL,
+          tool TEXT NOT NULL,
+          foxit_operation TEXT,
+          provider TEXT NOT NULL,
+          status TEXT NOT NULL,
+          detail TEXT,
+          created_at TEXT NOT NULL
+        );
         """
     )
     conn.commit()

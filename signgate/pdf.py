@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from io import BytesIO
 
-from pypdf import PdfReader
+from pypdf import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.pdfgen.canvas import Canvas
 
+from .checksum import checksum_from_manifest, fingerprint
 from .extract import extract_terms_from_pages
 from .types import ExtractedTerms, IntentManifest
 
@@ -245,6 +247,113 @@ def extract_pdf_terms(data: bytes) -> ExtractedTerms:
     reader = PdfReader(BytesIO(data))
     pages = [(page.extract_text() or "").replace("\x00", " ") for page in reader.pages]
     return extract_terms_from_pages(pages or [""])
+
+
+def merge_pdfs(*blobs: bytes) -> bytes:
+    writer = PdfWriter()
+    for blob in blobs:
+        reader = PdfReader(BytesIO(blob))
+        for page in reader.pages:
+            writer.add_page(page)
+    out = BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+def pdf_page_count(data: bytes) -> int:
+    return len(PdfReader(BytesIO(data)).pages)
+
+
+def has_cover_sheet(data: bytes) -> bool:
+    first = (PdfReader(BytesIO(data)).pages[0].extract_text() or "") if data else ""
+    return "SIGNGATE VERIFICATION CERTIFICATE" in first.upper() or "VERIFICATION CERTIFICATE" in first.upper()
+
+
+def cover_sheet_html(manifest: IntentManifest, verified_at: str | None = None) -> str:
+    checksum = fingerprint(checksum_from_manifest(manifest))
+    stamp = verified_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    value = money(manifest)
+    sow = "Statement of Work" in manifest["required_attachments"]
+    renewal = "No automatic renewal" if not manifest["legal_terms"]["auto_renewal"] else "Automatic renewal"
+    return f"""<!doctype html><html><head><meta charset="utf-8"/><title>SignGate Verification Certificate</title>
+<style>
+  body {{ font-family: Georgia, serif; color: #1b1a16; padding: 48px; }}
+  .mark {{ width: 96px; height: 96px; border-radius: 999px; border: 8px solid #0b7a4b; color: #0b7a4b;
+           display: flex; align-items: center; justify-content: center; font-size: 54px; font-weight: 700; }}
+  h1 {{ letter-spacing: .12em; font-size: 18px; }}
+  .hash {{ font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; }}
+  li {{ margin: 8px 0; }}
+</style></head><body>
+<div class="mark">✓</div>
+<h1>SIGNGATE VERIFICATION CERTIFICATE</h1>
+<p>The final PDF matches the approved Intent Manifest. The Signature Gate is OPEN.</p>
+<p class="hash">Intent Manifest hash: {checksum}</p>
+<p>Verified at {stamp}</p>
+<ol>
+  <li>Contract value: <strong>{value}</strong></li>
+  <li>Term: <strong>{manifest['commercial_terms']['term_months']} months</strong></li>
+  <li>Termination notice: <strong>{manifest['legal_terms']['termination_notice_days']}-day termination</strong></li>
+  <li>Automatic renewal: <strong>{renewal}</strong></li>
+  <li>Required attachment: <strong>{"Statement of Work required" if sow else "None"}</strong></li>
+</ol>
+<p>{manifest['parties']['customer']} · {manifest['parties']['vendor']}</p>
+<p>This certificate is merged in front of the instrument immediately before the Foxit eSign handoff.</p>
+</body></html>"""
+
+
+def generate_cover_sheet(manifest: IntentManifest, verified_at: str | None = None) -> bytes:
+    checksum = fingerprint(checksum_from_manifest(manifest))
+    stamp = verified_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    value = money(manifest)
+    sow = "Statement of Work" in manifest["required_attachments"]
+    buf = BytesIO()
+    canvas = Canvas(buf, pagesize=letter)
+    width, height = letter
+    canvas.setFillColorRGB(0.043, 0.478, 0.294)
+    canvas.circle(width / 2, height - 1.35 * inch, 0.55 * inch, fill=1, stroke=0)
+    canvas.setFillColorRGB(1, 1, 1)
+    canvas.setFont("Times-Bold", 36)
+    canvas.drawCentredString(width / 2, height - 1.48 * inch, "✓")
+    canvas.setFillColorRGB(0.043, 0.478, 0.294)
+    canvas.setFont("Times-Bold", 16)
+    canvas.drawCentredString(width / 2, height - 2.15 * inch, "SIGNGATE VERIFICATION CERTIFICATE")
+    canvas.setFillColorRGB(0.11, 0.10, 0.09)
+    canvas.setFont("Times-Roman", 12)
+    canvas.drawCentredString(
+        width / 2,
+        height - 2.45 * inch,
+        "The final PDF matches the approved Intent Manifest. The Signature Gate is OPEN.",
+    )
+    canvas.setFont("Courier", 8)
+    canvas.drawCentredString(width / 2, height - 2.75 * inch, f"Intent Manifest hash: {checksum}")
+    canvas.setFont("Times-Italic", 10)
+    canvas.drawCentredString(width / 2, height - 3.0 * inch, f"Verified at {stamp}")
+    terms = [
+        f"1.  Contract value: {value}",
+        f"2.  Term: {manifest['commercial_terms']['term_months']} months",
+        f"3.  Termination notice: {manifest['legal_terms']['termination_notice_days']}-day termination",
+        f"4.  Automatic renewal: {'No automatic renewal' if not manifest['legal_terms']['auto_renewal'] else 'Automatic renewal'}",
+        f"5.  Required attachment: {'Statement of Work required' if sow else 'None'}",
+    ]
+    y = height - 3.55 * inch
+    canvas.setFont("Times-Roman", 13)
+    canvas.setFillColorRGB(0.11, 0.10, 0.09)
+    for line in terms:
+        canvas.drawString(1.3 * inch, y, line)
+        y -= 28
+    y -= 16
+    canvas.setFont("Times-Roman", 11)
+    canvas.drawString(1.3 * inch, y, f"Customer: {manifest['parties']['customer']}")
+    canvas.drawString(1.3 * inch, y - 18, f"Vendor: {manifest['parties']['vendor']}")
+    canvas.setFont("Times-Italic", 9)
+    canvas.setFillColorRGB(0.4, 0.4, 0.4)
+    canvas.drawCentredString(
+        width / 2,
+        0.7 * inch,
+        "Merged in front of the instrument immediately before the Foxit eSign handoff.",
+    )
+    canvas.save()
+    return buf.getvalue()
 
 
 def generate_receipt_pdf(document_id: str, title: str, gate: str, checksum: str, actor: str, findings: list[str]) -> bytes:

@@ -6,70 +6,69 @@ from typing import Any
 
 import requests
 
-from .types import Discrepancy, ExtractedTerms, IntentManifest
+from .types import ExtractedTerms, IntentManifest
 
-PROMPT = """You are a legal-meaning reviewer for SignGate.
-The human already approved an Intent Manifest. Compare it to terms extracted from a final PDF.
-Propose discrepancies only when the legal meaning changed.
-Do not declare the contract safe. Do not open or close the signature gate.
-Return JSON: { "findings": [{ "field": string, "title": string, "severity": "clarifying"|"material"|"critical"|"uncertain", "approved_value": string, "found_value": string, "rationale": string, "confidence": number }] }
-If you are not sure, emit severity "uncertain". Empty findings is allowed."""
+PROMPT = """You extract structured contract terms from OCR/extracted PDF text.
+Return ONLY JSON matching this schema:
+{
+  "contract_value_amount": number,
+  "contract_value_currency": "USD"|"SGD"|"EUR"|"GBP",
+  "term_months": number,
+  "payment_terms_days": number,
+  "termination_notice_days": number,
+  "auto_renewal": boolean,
+  "personal_guarantee": boolean,
+  "exclusivity": boolean,
+  "governing_law": string,
+  "customer": string,
+  "vendor": string,
+  "bank_account": string,
+  "required_attachments": string[]
+}
+Rules:
+- Map meaning onto those fields. Canonicalize numbers ("$50,000.00" → 50000, "USD 500,000" → 500000).
+- Do not decide whether the document is safe.
+- Do not say the terms match. Do not open or close any gate.
+- If a field is not present, use null (or [] for attachments).
+"""
 
 
-def propose_semantic_findings(manifest: IntentManifest, extracted: ExtractedTerms) -> tuple[list[Discrepancy], bool]:
+def extract_llm_json(manifest: IntentManifest, extracted: ExtractedTerms) -> tuple[dict[str, Any] | None, bool]:
     if not os.environ.get("OPENAI_API_KEY") and not os.environ.get("ANTHROPIC_API_KEY"):
-        return [], False
+        return None, False
     payload = json.dumps(
         {
-            "approved_manifest": manifest,
-            "extracted_terms": {
-                "parties": extracted["parties"],
-                "commercial_terms": extracted["commercial_terms"],
-                "legal_terms": extracted["legal_terms"],
-                "attachments_found": extracted["attachments_found"],
-                "excerpts": extracted["excerpts"],
-                "sample_text": extracted["raw_text"][:8000],
+            "instruction": "Extract canonical terms from the Foxit/OCR text. Do not compare. Do not approve.",
+            "intent_manifest_schema_example": {
+                "contract_value_amount": manifest["commercial_terms"]["contract_value"]["amount"],
+                "fields": [
+                    "contract_value_amount",
+                    "contract_value_currency",
+                    "term_months",
+                    "payment_terms_days",
+                    "termination_notice_days",
+                    "auto_renewal",
+                    "personal_guarantee",
+                    "exclusivity",
+                    "governing_law",
+                    "customer",
+                    "vendor",
+                    "bank_account",
+                    "required_attachments",
+                ],
             },
+            "foxit_extracted_text": extracted["raw_text"][:12000],
         },
         indent=2,
     )
     try:
         raw = _openai(payload) if os.environ.get("OPENAI_API_KEY") else _anthropic(payload)
         parsed = json.loads(raw)
-        findings: list[Discrepancy] = []
-        for item in parsed.get("findings") or []:
-            findings.append(
-                {
-                    "id": item.get("field", "semantic"),
-                    "severity": item.get("severity", "uncertain"),
-                    "layer": "semantic",
-                    "field": item.get("field", "semantic_review"),
-                    "title": item.get("title", "Semantic finding"),
-                    "approved_value": item.get("approved_value", ""),
-                    "found_value": item.get("found_value", ""),
-                    "page": extracted["field_pages"].get(item.get("field", "")),
-                    "excerpt": extracted["excerpts"].get(item.get("field", "")),
-                    "rationale": f"{item.get('rationale', '')} (LLM proposal — not independently authoritative.)",
-                    "confidence": float(item.get("confidence", 0.6)),
-                }
-            )
-        return findings, True
+        if isinstance(parsed, dict) and "findings" in parsed and "contract_value_amount" not in parsed:
+            parsed = parsed.get("extracted") or parsed.get("terms") or parsed
+        return parsed if isinstance(parsed, dict) else None, True
     except Exception:
-        return [
-            {
-                "id": "semantic_review",
-                "severity": "uncertain",
-                "layer": "semantic",
-                "field": "semantic_review",
-                "title": "Semantic reviewer failed",
-                "approved_value": "Deterministic checks still apply",
-                "found_value": "LLM proposal unavailable",
-                "page": None,
-                "excerpt": None,
-                "rationale": "The language model could not complete a semantic review. The gate stays conservative.",
-                "confidence": 0.2,
-            }
-        ], True
+        return None, True
 
 
 def _openai(user: str) -> str:
