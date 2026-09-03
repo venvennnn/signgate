@@ -34,12 +34,11 @@ st.markdown(
     """
     <style>
       html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
-      [data-testid="stSidebar"], .stApp {
+      [data-testid="stSidebar"], [data-testid="stBottom"], .stApp, .main, .block-container {
         background: #ffffff !important;
         color: #1b1a16;
       }
-      [data-testid="stHeader"] { background: #ffffff !important; }
-      [data-testid="stSidebar"] { background: #faf8f4 !important; border-right: 1px solid #ece6da; }
+      [data-testid="stSidebar"] { background: #ffffff !important; border-right: 1px solid #ece6da; }
       [data-testid="stToolbar"] { display: none; }
       h1, h2, h3 { font-family: "Times New Roman", Times, serif !important; color: #1b1a16 !important; }
       .block-container { padding-top: 1.4rem; max-width: 1200px; }
@@ -100,7 +99,7 @@ def render_home() -> None:
             st.session_state.prompt_box = DEFAULT_PROMPT
             st.rerun()
     with c2:
-        if st.button("Extract Intent Manifest"):
+        if st.button("Extract Intent Manifest", key="extract_intent"):
             try:
                 session = create_document(prompt or DEFAULT_PROMPT)
                 st.session_state.document_id = session["document"]["id"]
@@ -195,7 +194,7 @@ def render_workspace(session: dict) -> None:
 
     top_l, top_r = st.columns([4, 1])
     with top_l:
-        if st.button("← New request", type="secondary"):
+        if st.button("← New request", type="secondary", key="new_request"):
             st.session_state.document_id = None
             st.rerun()
         st.markdown('<p class="sg-kicker">SignGate</p>', unsafe_allow_html=True)
@@ -235,14 +234,18 @@ def render_workspace(session: dict) -> None:
     draft = _manifest_editor(manifest["payload"], locked) if manifest else None
 
     b1, b2, b3, b4 = st.columns(4)
-    if draft and not locked and b1.button("Save draft", type="secondary"):
+    if draft and not locked and b1.button("Save draft", type="secondary", key="save_draft"):
         try:
             update_draft_manifest(document["id"], draft)
             _clear_err()
             st.rerun()
         except Exception as exc:
             _err(exc)
-    if b2.button("Approve these terms", disabled=bool(approved) and document["status"] != "awaiting_approval"):
+    if b2.button(
+        "Approve these terms",
+        disabled=bool(approved) and document["status"] != "awaiting_approval",
+        key="approve_terms",
+    ):
         try:
             if draft and not locked:
                 update_draft_manifest(document["id"], draft)
@@ -251,107 +254,106 @@ def render_workspace(session: dict) -> None:
             st.rerun()
         except Exception as exc:
             _err(exc)
-    if b3.button("Generate agreement PDF", disabled=not approved):
+    if b3.button("Generate agreement PDF", disabled=not approved, key="generate_pdf"):
         try:
             generate_document(document["id"])
             _clear_err()
             st.rerun()
         except Exception as exc:
             _err(exc)
+    if b4.button(
+        "Introduce adversarial edit",
+        disabled=not session["current_version"],
+        type="secondary",
+        key="adversary",
+    ):
+        try:
+            introduce_adversary(document["id"])
+            _clear_err()
+            st.rerun()
+        except Exception as exc:
+            _err(exc)
 
-    left, right = st.columns(2)
-    with left:
-        st.markdown("### Final document")
-        if session["current_version"]:
-            st.caption(f"v{session['current_version']['version']} · {session['current_version']['source']}")
-            pdf_data = pdf_bytes(document["id"])
-            st.download_button(
-                "Download PDF",
-                data=pdf_data,
-                file_name=f"signgate-{document['id']}.pdf",
-                mime="application/pdf",
-            )
-            if hasattr(st, "pdf"):
-                st.pdf(pdf_data, height=520)
-            else:
-                st.caption("PDF preview requires Streamlit 1.49+. Download the file above to review it.")
-        else:
-            st.info("Approve the manifest, then generate or upload a PDF.")
-        uploaded = st.file_uploader("Upload PDF", type=["pdf"])
-        if uploaded is not None and st.button("Verify uploaded PDF"):
-            try:
-                upload_document(document["id"], uploaded.getvalue())
-                _clear_err()
-                st.rerun()
-            except Exception as exc:
-                _err(exc)
-        u1, u2 = st.columns(2)
-        if u1.button("Introduce adversarial edit", disabled=not session["current_version"], type="secondary"):
-            try:
-                introduce_adversary(document["id"])
-                _clear_err()
-                st.rerun()
-            except Exception as exc:
-                _err(exc)
-        if u2.button(
-            "Restore approved PDF",
-            disabled=not any(v["source"] == "generated" for v in session["versions"]),
-            type="secondary",
-        ):
-            try:
-                restore_approved(document["id"])
-                _clear_err()
-                st.rerun()
-            except Exception as exc:
-                _err(exc)
+    if st.button(
+        "Restore approved PDF",
+        disabled=not any(v["source"] == "generated" for v in session["versions"]),
+        type="secondary",
+        key="restore_pdf",
+    ):
+        try:
+            restore_approved(document["id"])
+            _clear_err()
+            st.rerun()
+        except Exception as exc:
+            _err(exc)
 
-    with right:
-        st.markdown("### Verification")
-        st.caption("Exact values, structure, and legal meaning. The LLM may propose findings; it cannot open the gate.")
-        if decision:
-            st.write(
-                f"{decision['verified_term_count']} terms checked · "
-                f"{len(decision['missing_attachments'])} missing attachments · "
-                f"{len(decision['discrepancies'])} findings"
+    st.markdown("### Verification")
+    st.caption("Exact values, structure, and legal meaning. The LLM may propose findings; it cannot open the gate.")
+    if decision:
+        st.write(
+            f"{decision['verified_term_count']} terms checked · "
+            f"{len(decision['missing_attachments'])} missing attachments · "
+            f"{len(decision['discrepancies'])} findings"
+        )
+        if not decision["discrepancies"]:
+            st.success("0 material discrepancies. Semantic checksum holds.")
+        for item in decision["discrepancies"]:
+            color = {
+                "critical": "#b42318",
+                "material": "#9a6700",
+                "uncertain": "#8a6a2f",
+                "clarifying": "#2450c0",
+            }.get(item["severity"], "#6d675c")
+            page = f" · p.{item['page']}" if item.get("page") else ""
+            excerpt = f"<p style='color:#6d675c;font-size:12px'>“{item['excerpt']}”</p>" if item.get("excerpt") else ""
+            st.markdown(
+                f"""<div class="sg-finding">
+                <div style="color:{color};font-size:11px;letter-spacing:.14em;text-transform:uppercase">{item['severity']} · {item['layer']}{page}</div>
+                <strong>{item['title']}</strong>
+                <div>Approved {item['approved_value']} → Final {item['found_value']}</div>
+                <div style="color:#6d675c;font-size:13px">{item['rationale']}</div>
+                {excerpt}
+                </div>""",
+                unsafe_allow_html=True,
             )
-            if not decision["discrepancies"]:
-                st.success("0 material discrepancies. Semantic checksum holds.")
-            for item in decision["discrepancies"]:
-                color = {
-                    "critical": "#b42318",
-                    "material": "#9a6700",
-                    "uncertain": "#8a6a2f",
-                    "clarifying": "#2450c0",
-                }.get(item["severity"], "#6d675c")
-                page = f" · p.{item['page']}" if item.get("page") else ""
-                excerpt = f"<p style='color:#6d675c;font-size:12px'>“{item['excerpt']}”</p>" if item.get("excerpt") else ""
-                st.markdown(
-                    f"""<div class="sg-finding">
-                    <div style="color:{color};font-size:11px;letter-spacing:.14em;text-transform:uppercase">{item['severity']} · {item['layer']}{page}</div>
-                    <strong>{item['title']}</strong>
-                    <div>Approved {item['approved_value']} → Final {item['found_value']}</div>
-                    <div style="color:#6d675c;font-size:13px">{item['rationale']}</div>
-                    {excerpt}
-                    </div>""",
-                    unsafe_allow_html=True,
-                )
-        else:
-            st.write("Generate or upload a document to run verification.")
+    else:
+        st.write("Generate or upload a document to run verification.")
 
-        if extracted:
-            st.markdown("#### Extracted terms")
-            value = extracted["commercial_terms"]["contract_value"]
-            st.write(
-                {
-                    "Value": f"{value['currency']} {value['amount']:,}" if value else "—",
-                    "Notice": f"{extracted['legal_terms']['termination_notice_days']} days"
-                    if extracted["legal_terms"]["termination_notice_days"] is not None
-                    else "—",
-                    "Auto-renew": {True: "Yes", False: "No"}.get(extracted["legal_terms"]["auto_renewal"], "—"),
-                    "Law": extracted["legal_terms"]["governing_law"] or "—",
-                    "Guarantee": {True: "Yes", False: "No"}.get(extracted["legal_terms"]["personal_guarantee"], "—"),
-                }
-            )
+    if extracted:
+        st.markdown("#### Extracted terms")
+        value = extracted["commercial_terms"]["contract_value"]
+        st.write(
+            {
+                "Value": f"{value['currency']} {value['amount']:,}" if value else "—",
+                "Notice": f"{extracted['legal_terms']['termination_notice_days']} days"
+                if extracted["legal_terms"]["termination_notice_days"] is not None
+                else "—",
+                "Auto-renew": {True: "Yes", False: "No"}.get(extracted["legal_terms"]["auto_renewal"], "—"),
+                "Law": extracted["legal_terms"]["governing_law"] or "—",
+                "Guarantee": {True: "Yes", False: "No"}.get(extracted["legal_terms"]["personal_guarantee"], "—"),
+            }
+        )
+
+    if session["current_version"]:
+        st.caption(
+            f"Final document v{session['current_version']['version']} · {session['current_version']['source']}"
+        )
+        st.download_button(
+            "Download current PDF",
+            data=pdf_bytes(document["id"]),
+            file_name=f"signgate-{document['id']}.pdf",
+            mime="application/pdf",
+            key="download_pdf",
+        )
+
+    uploaded = st.file_uploader("Or upload a PDF to verify against the approved manifest", type=["pdf"], key="upload_pdf")
+    if uploaded is not None and st.button("Verify uploaded PDF", key="verify_upload"):
+        try:
+            upload_document(document["id"], uploaded.getvalue())
+            _clear_err()
+            st.rerun()
+        except Exception as exc:
+            _err(exc)
 
     st.markdown("### Human signing handoff")
     if gate == "open":
@@ -359,7 +361,7 @@ def render_workspace(session: dict) -> None:
     else:
         st.write("The eSign API is unreachable until the gate opens. This is the product.")
     s1, s2 = st.columns(2)
-    if s1.button("Prepare signature request", disabled=gate != "open"):
+    if s1.button("Prepare signature request", disabled=gate != "open", key="prepare_esign"):
         try:
             request_signature(document["id"])
             _clear_err()
@@ -372,7 +374,7 @@ def render_workspace(session: dict) -> None:
             f"Provider: {session['signature_request']['provider']} · {session['signature_request']['status']}"
         )
         if session["signature_request"]["status"] != "signed":
-            if s2.button("I have reviewed the verified document and I sign"):
+            if s2.button("I have reviewed the verified document and I sign", key="human_sign"):
                 try:
                     name = session["approved_manifest"]["payload"]["signer"]["name"]
                     complete_human_signature(document["id"], actor=f"human:{name}")
@@ -420,7 +422,6 @@ def main() -> None:
             render_workspace(get_session(st.session_state.document_id))
         except Exception as exc:
             st.error(str(exc))
-            st.session_state.document_id = None
     else:
         render_home()
 
