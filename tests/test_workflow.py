@@ -63,7 +63,7 @@ def test_scanned_sabotage_blocks_then_revert_opens(tmp_path, monkeypatch):
     fields = [item["field"] for item in blocked["decision"]["discrepancies"]]
     assert "contract_value" in fields
     assert "auto_renewal" in fields
-    assert "attachments" in fields
+    assert "vendor" not in fields
     ocr_steps = [step for step in blocked["pipeline"] if step["tool"] == "ocr"]
     assert ocr_steps
     assert ocr_steps[-1]["provider"] in {"foxit", "local"}

@@ -20,7 +20,7 @@ from .foxit import (
     foxit_ocr,
     foxit_pdf_to_text,
 )
-from .intent import adversarial_manifest, extract_intent
+from .intent import adversarial_manifest, extract_intent, scanned_adversarial_manifest
 from .pdf import (
     agreement_html,
     cover_sheet_html,
@@ -662,21 +662,21 @@ def introduce_scanned_adversary(document_id: str, actor: str = "human:operator")
     approved = _approved_manifest(document_id)
     if not approved:
         raise ValueError("Approve and generate an agreement before introducing a scanned sabotage.")
-    tampered = adversarial_manifest(approved["payload"])
+    tampered = scanned_adversarial_manifest(approved["payload"])
     scan, source_text = generate_scan_pdf(tampered, adversarial=True)
     record_pipeline(
         document_id,
         "adversary_scan",
         "local",
         "ok",
-        "Vendor returned a scanned image of a modified contract ($500k, auto-renewal on, SOW removed).",
+        "Vendor returned a scanned image of a modified contract ($500k, auto-renewal on).",
     )
     return upload_document(
         document_id,
         scan,
         actor,
         "adversarial_scan",
-        "Scanned sabotage: $50k→$500k, auto-renewal enabled, 90-day termination, Statement of Work removed.",
+        "Scanned sabotage: $50k→$500k and automatic renewal enabled.",
         scan=True,
         source_text=source_text,
     )

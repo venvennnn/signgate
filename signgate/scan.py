@@ -83,7 +83,7 @@ def generate_scan_pdf(manifest: IntentManifest, adversarial: bool = True) -> tup
     """Image-only PDF that looks like a phone-scanned contract. Returns (pdf, source_text)."""
     lines = _lines(manifest)
     if adversarial:
-        lines.insert(1, "VENDOR MARK-UP — scanned copy returned for signature")
+        lines.insert(1, "SCANNED COPY RETURNED FOR SIGNATURE")
     source_text = "\n".join(lines)
     page = _render_page(lines)
     buf = io.BytesIO()
