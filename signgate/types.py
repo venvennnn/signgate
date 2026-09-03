@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, TypedDict, NotRequired
 
 Severity = Literal["cosmetic", "clarifying", "material", "critical", "uncertain"]
 VerificationLayer = Literal["exact", "structural", "semantic"]
@@ -59,6 +59,28 @@ class Discrepancy(TypedDict):
     confidence: float
 
 
+class TwoPassResult(TypedDict):
+    parser_json: dict[str, Any]
+    llm_json: dict[str, Any] | None
+    llm_raw: dict[str, Any] | None
+    llm_used: bool
+    llm_may_not_open_gate: bool
+    deterministic_winner: Literal["python"]
+    parser_mismatches: list[dict[str, Any]]
+    llm_mismatches: list[dict[str, Any]]
+    llm_parser_conflicts: list[dict[str, Any]]
+    approved_json: dict[str, Any]
+
+
+class PipelineStep(TypedDict):
+    tool: str
+    foxit_operation: str | None
+    provider: Literal["foxit", "local"]
+    status: Literal["ok", "fallback", "failed", "skipped"]
+    detail: str
+    created_at: NotRequired[str]
+
+
 class GateDecision(TypedDict):
     status: Literal["open", "blocked"]
     semantic_checksum: str
@@ -73,3 +95,6 @@ class GateDecision(TypedDict):
     discrepancies: list[Discrepancy]
     llm_used: bool
     llm_may_not_open_gate: bool
+    two_pass: NotRequired[TwoPassResult]
+    cover_sheet_attached: NotRequired[bool]
+    extraction_provider: NotRequired[str]

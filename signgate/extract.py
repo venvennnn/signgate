@@ -216,7 +216,14 @@ def extract_terms_from_pages(pages: list[str]) -> ExtractedTerms:
         vendor = clean_party(re.split(r"[.\n]", raw)[0])
 
     attachments: list[str] = []
-    if re.search(r"statement of work", joined, re.I) or "statement of work" in machine.get("attachments", "").lower():
+    machine_attachments = machine.get("attachments", "").lower()
+    if "statement of work" in machine_attachments:
+        attachments.append("Statement of Work")
+    elif re.search(r"statement of work", joined, re.I) and not re.search(
+        r"no statement of work|statement of work is (?:not|absent)|without (?:a )?statement of work",
+        joined,
+        re.I,
+    ):
         attachments.append("Statement of Work")
     if re.search(r"service level agreement|\bSLA\b", joined):
         attachments.append("Service Level Agreement")
