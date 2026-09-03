@@ -7,4 +7,9 @@ data
 .env.local
 .DS_Store
 coverage
-tsconfig.tsbuildinfo
+__pycache__
+.pytest_cache
+.venv
+venv
+*.pyc
+.streamlit/secrets.toml
